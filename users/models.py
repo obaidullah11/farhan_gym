@@ -54,6 +54,7 @@ class User(AbstractUser):
     USER_TYPE_CHOICES = (
         ('client', 'client'),
         
+        ('trainer', 'trainer'),
         ('super_admin', 'Super Admin'),
     )
     

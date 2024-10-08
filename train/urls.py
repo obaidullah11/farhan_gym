@@ -1,39 +1,27 @@
-"""URL patterns for Personal Training App"""
 from django.urls import path
-from . import views
+from .views import *
 
 urlpatterns = [
-    path("", views.index, name="index"),
-        path("<int:pnum>", views.index, name="index"),
-        path("login", views.login_view, name="login"),
-        path("logout", views.logout_view, name="logout"),
-        path("register", views.register, name="register"),
-        path("newsession", views.newsession, name="newsession"),
-        path("newsession/<int:pk>", views.sessionview, name="sessionview"),
-        path("editsession", views.editsession, name="editsession"),
-        path("editsession/<int:session>", views.editsession, name="editsession"),
-        path("routines/new", views.newroutine, name="newroutine"),
-        path("routines/edit", views.routinelist, name="routinelist"),
-        path("routines/edit/<int:pk>", views.editroutine, name="editroutine"),
-        path("exercises", views.exerciseview, name="exerciseview"),
-        path("charts", views.charts, name="charts"),
-        path("charts/<int:pnum>", views.charts, name="charts"),
+    # Exercise URLs
+    path('exercises/', exercise_list_create, name='exercise-list-create'),
+    path('exercises/<int:pk>/', exercise_detail, name='exercise-detail'),
 
-        # client-specific routes
-        path("clientroutines", views.clientroutines, name="clientroutines"),
-        path("clientroutines/<int:pnum>", views.clientroutines, name="clientroutines"),
-        path("clientprogress", views.clientprogress, name="clientprogress"),
+    # Routine URLs
+    path('routines/', routine_list_create, name='routine-list-create'),
+    path('routines/<int:pk>/', routine_detail, name='routine-detail'),
+    path('routines/client/<int:client_id>/', routine_by_client, name='routine-by-client'),
 
-        # API routes
-        path("postset", views.postset, name="postset"),
-        path("setgroupinfo", views.setgroupinfo, name="setgroupinfo"),
-        path("deletex", views.deletex, name="deletex"),
-        path("deletesession/<int:sessionpk>", views.deletesession, name="deletesession"),
-        path("checkcomplete/<int:sessionpk>", views.checkcomplete, name="checkcomplete"),
-        path("deleteempties/<int:sessionpk>", views.deleteempties, name="deleteempties"),
-        path("fetchsessions/<int:client>", views.fetchsessions, name="fetchsessions"),
-        path("updateset", views.updateset, name="updateset"),
-        path("archive/<int:routine>", views.archive, name="archive"),
-        path("anotherexercise", views.anotherexercise, name="anotherexercise"),
-        path("progressAPI/<int:exercise>", views.progressAPI, name="progressAPI")
+    # Session URLs
+    path('sessions/', session_list_create, name='session-list-create'),
+    path('sessions/<int:pk>/', session_detail, name='session-detail'),
+    path('user/sessions/<int:user_id>/', user_sessions, name='session-detail'),
+
+
+    # Setgroup URLs
+    path('setgroups/', setgroup_list_create, name='setgroup-list-create'),
+    path('setgroups/<int:pk>/',setgroup_detail, name='setgroup-detail'),
+
+    # Set URLs
+    path('sets/', set_list_create, name='set-list-create'),
+    path('sets/<int:pk>/', set_detail, name='set-detail'),
 ]

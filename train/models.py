@@ -26,8 +26,7 @@ class Routine(models.Model):
     """A group of exercises for a particular user"""
     name = models.CharField(max_length=20, verbose_name='Routine Name')
     startdate = models.DateField(auto_now_add=True)
-    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name="routines",
-                              limit_choices_to={'is_staff': 'False'})
+    client = models.ForeignKey(User, on_delete=models.CASCADE, related_name="routines")
     exercises = models.ManyToManyField("Exercise", related_name="routines")
     archived = models.BooleanField(default=False)
 
@@ -74,18 +73,9 @@ class Session(models.Model):
     routine = models.ForeignKey("Routine", on_delete=models.PROTECT, related_name="sessions",
                                 limit_choices_to={'archived': 'False'})
     timestamp = models.DateTimeField(auto_now_add=True)
-    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,
-                                limit_choices_to={'is_staff': 'True', 'is_superuser': 'False'})
+    trainer = models.ForeignKey(User, on_delete=models.SET_NULL, null=True,)
 
     def __str__(self):
         return f"Session {self.pk} by {self.trainer.first_name} - {self.routine.name}"
 
-    def serialize(self):
-        """serialize Sessions for API request"""
-        return {
-            "pk": self.pk,
-            "trainer": self.trainer.first_name,
-            "client": self.routine.client.first_name,
-            "routine": self.routine.name,
-            "timestamp": self.timestamp.astimezone().strftime("%b %-d %Y, %-I:%M %p")
-        }
+    
