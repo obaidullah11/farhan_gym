@@ -1,5 +1,7 @@
 from django.urls import path
+from django.conf import settings
 from .views import *
+from django.conf.urls.static import static
 
 urlpatterns = [
     # Exercise URLs
@@ -24,4 +26,4 @@ urlpatterns = [
     # Set URLs
     path('sets/', set_list_create, name='set-list-create'),
     path('sets/<int:pk>/', set_detail, name='set-detail'),
-]
+]+ static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

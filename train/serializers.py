@@ -2,9 +2,17 @@ from rest_framework import serializers
 from .models import Exercise, Routine, Setgroup, Set, Session
 
 class ExerciseSerializer(serializers.ModelSerializer):
+
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'body_part']
+        fields = ['id', 'name', 'body_part', 'gif']  # Include the gif field
+
+    def validate_gif(self, value):
+        """Check file size limit for gif uploads."""
+        if value.size > 2 * 1024 * 1024:  # 2 MB limit
+            raise serializers.ValidationError("File size should be less than 2MB.")
+        return value
+    
 
 class RoutineSerializer(serializers.ModelSerializer):
     exercises = serializers.PrimaryKeyRelatedField(
