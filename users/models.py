@@ -82,6 +82,8 @@ class User(AbstractUser):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
     image = models.ImageField(upload_to='user_images/', null=True, blank=True)
+    is_premium = models.BooleanField(default=False)
+    device_id = models.CharField(max_length=255)
 
     objects = MyUserManager()
 

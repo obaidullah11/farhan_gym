@@ -89,6 +89,7 @@ INSTALLED_APPS = [
     # 'import_export',
     # 'adminsortable2',
     'users',
+    'workout',
     # 'interests',
     # 'Events',
     # 'factory',

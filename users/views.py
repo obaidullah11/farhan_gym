@@ -55,6 +55,105 @@ class SocialLoginOrRegisterView(APIView):
             'errors': serializer.errors
         }, status=status.HTTP_400_BAD_REQUEST)
 
+class UserRegistrationView(APIView):
+    renderer_classes = [UserRenderer]
+
+    def post(self, request, format=None):
+        serializer = UserRegistrationSerializer(data=request.data)
+
+        try:
+            serializer.is_valid(raise_exception=True)
+        except ValidationError as e:
+            error_detail = e.detail
+            if 'email' in error_detail:
+                return Response({'success': False, 'error': "User with this Email already exists."}, status=status.HTTP_400_BAD_REQUEST)
+            else:
+                return Response({'success': False, 'error': error_detail}, status=status.HTTP_400_BAD_REQUEST)
+
+        to_email = request.data.get('email')
+
+        # Generate 4-digit API code
+        api_code = get_random_string(length=4, allowed_chars='0123456789')
+        otp_code = api_code
+
+        # Save user data with the OTP code
+        user = serializer.save(otp_code=otp_code)
+        print(f"User {to_email} saved successfully with OTP code {otp_code}.")
+
+        # Send email to the user
+        subject = 'Your 4-digit API'
+        message = f'Your 4-digit API is: {api_code}'
+        from_email = 'muhammadobaidullah1122@gmail.com'  # Update with your email
+        try:
+            send_mail(subject, message, from_email, [to_email])
+            print(f"OTP email sent to {to_email}.")
+        except Exception as e:
+            # If sending email fails, return failure response
+            print(f"Failed to send OTP email to {to_email}. Error: {e}")
+            return Response({'success': False, 'message': 'Failed to send OTP email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        # Get tokens for user
+        token = get_tokens_for_user(user)
+        print(f"Tokens generated for user {user.username}.")
+
+        # Response indicating success and message
+        return Response({
+            'success': True,
+            'message': 'User registered successfully. OTP sent to your email.',
+
+        }, status=status.HTTP_201_CREATED)
+
+
+class UserLoginView(APIView):
+    def post(self, request, format=None):
+        serializer = UserLoginSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        email = serializer.validated_data.get('email')
+        password = serializer.validated_data.get('password')
+
+        # Check if user exists
+        try:
+            user = User.objects.get(email=email)
+        except User.DoesNotExist:
+            return Response({
+                'success': False,
+                'message': 'Email or Password is not valid.'
+            }, status=status.HTTP_200_OK)
+
+        # Check if user is verified
+        if not user.verify:
+            return Response({
+                'success': False,
+                'is_verified':user.verify,
+                'message': 'Account is not verified. Please verify your email.'
+            }, status=status.HTTP_200_OK)
+        if not user.is_active:
+            return Response({
+                'success': False,
+                'is_verified':user.verify,
+                'is_active':user.is_active,
+                'message': 'Account has been deactivated by Admin'
+            }, status=status.HTTP_200_OK)
+        # Authenticate user
+        user = authenticate(username=email, password=password)  # Use email as username for authentication
+
+        if user is not None:
+            refresh = RefreshToken.for_user(user)
+            token = str(refresh.access_token)
+            profile_serializer = UserProfileSerializer(user)  # Serialize User instance if needed
+            return Response({
+                'success': True,
+                'is_verified':user.verify,
+                'id': user.id,
+                'token': token,
+                'profile': profile_serializer.data if profile_serializer else None,  # Include profile data if needed
+                'message': 'Login successful.'
+            }, status=status.HTTP_200_OK)
+        else:
+            return Response({
+                'success': False,
+                'message': 'Email or Password is not valid.'
+            }, status=status.HTTP_200_OK)
 
 
 
@@ -129,26 +228,6 @@ def set_new_password(request):
 
 
 
-
-# from .serializers import
-class CompanyCheckAPIView(APIView):
-    def post(self, request, format=None):
-        serializer = CompanyCheckSerializer(data=request.data)
-        if serializer.is_valid():
-            company_name = serializer.validated_data['company']
-            try:
-                company = Company.objects.get(name__iexact=company_name)
-                return Response({'success': True, 'message': 'Company found in database.'}, status=status.HTTP_200_OK)
-            except Company.DoesNotExist:
-                return Response({'success': False, 'message': 'Company not found in database.'}, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
-class CompanyCreateAPIView(APIView):
-    def post(self, request, format=None):
-        serializer = CompanySerializer(data=request.data)
-        if serializer.is_valid():
-            serializer.save()  # Save validated data to create a new Company instance
-            return Response(serializer.data, status=status.HTTP_201_CREATED)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 class UserDeleteAPIView(APIView):
     def delete(self, request, custom_id, format=None):
@@ -229,7 +308,7 @@ def list_users(request):
 
     # Return serialized data in the response
     return Response(serializer.data)
-# from users.utils import get_tokens_for_user
+
 class UserUpdateAPIView(APIView):
     def post(self, request, custom_id, format=None):
         try:
@@ -245,131 +324,9 @@ class UserUpdateAPIView(APIView):
         else:
             return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
-# class UserRegistrationView(APIView):
-#     renderer_classes = [UserRenderer]
 
-#     def post(self, request, format=None):
-#         serializer = UserRegistrationSerializer(data=request.data)
 
-#         try:
-#             serializer.is_valid(raise_exception=True)
-#         except ValidationError as e:
-#             error_detail = e.detail
-#             if 'email' in error_detail:
-#                 return Response({'success': False, 'error': "User with this Email already exists."}, status=status.HTTP_400_BAD_REQUEST)
-#             else:
-#                 return Response({'success': False, 'error': error_detail}, status=status.HTTP_400_BAD_REQUEST)
 
-#         to_email = request.data.get('email')
-
-#         # Save user data
-#         user = serializer.save()
-#         print(f"User {to_email} saved successfully.")
-
-#         # Generate 4-digit API code
-#         api_code = get_random_string(length=4, allowed_chars='0123456789')
-#         # print(f"Generated API code: {request.data.email}")
-
-#         # Send email to the user
-#         subject = 'Your 4-digit API'
-#         message = f'Your 4-digit API is: {api_code}'
-#         from_email = 'muhammadobaidullah1122@gmail.com'  # Update with your email
-#         to_email = to_email
-#         try:
-#             send_mail(subject, message, from_email, [to_email])
-#             print(f"OTP email sent to {to_email}.")
-#         except Exception as e:
-#             # If sending email fails, return failure response
-#             print(f"Failed to send OTP email to {to_email}. Error: {e}")
-#             return Response({'success': False, 'message': 'Failed to send OTP email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-#         return Response({'success': True, 'message': 'User registered successfully.'}, status=status.HTTP_201_CREATED)
-# class UserRegistrationView(APIView):
-#     renderer_classes = [UserRenderer]
-
-#     def post(self, request, format=None):
-#         serializer = UserRegistrationSerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         to_email=request.data.get('email')
-
-#         # Save user data
-#         # user = serializer.save()
-#         print(f"User {to_email} saved successfully.")
-
-#         # Generate 4-digit API code
-#         api_code = get_random_string(length=4, allowed_chars='0123456789')
-#         # print(f"Generated API code: {request.data.email}")
-
-#         # Send email to the user
-#         subject = 'Your 4-digit API'
-#         message = f'Your 4-digit API is: {api_code}'
-#         from_email = 'muhammadobaidullah1122@gmail.com'  # Update with your email
-#         to_email = to_email
-#         try:
-#             send_mail(subject, message, from_email, [to_email])
-#             print(f"OTP email sent to {to_email}.")
-#         except Exception as e:
-#             # If sending email fails, return failure response
-#             print(f"Failed to send OTP email to {to_email}. Error: {e}")
-#             return Response({'success': False, 'message': 'Failed to send OTP email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Update OTP code in the user model
-        # otp_code = api_code
-        # user = serializer.save(otp_code=api_code)
-
-        # # Get tokens for user
-        # token = get_tokens_for_user(user)
-        # print(f"Tokens generated for user {user.username}.")
-
-        # Response indicating success and message
-        # return Response({'success': True, 'message': 'User registered successfully. OTP sent to your email'}, status=status.HTTP_201_CREATED)
-class UserRegistrationView(APIView):
-    renderer_classes = [UserRenderer]
-
-    def post(self, request, format=None):
-        serializer = UserRegistrationSerializer(data=request.data)
-
-        try:
-            serializer.is_valid(raise_exception=True)
-        except ValidationError as e:
-            error_detail = e.detail
-            if 'email' in error_detail:
-                return Response({'success': False, 'error': "User with this Email already exists."}, status=status.HTTP_400_BAD_REQUEST)
-            else:
-                return Response({'success': False, 'error': error_detail}, status=status.HTTP_400_BAD_REQUEST)
-
-        to_email = request.data.get('email')
-
-        # Generate 4-digit API code
-        api_code = get_random_string(length=4, allowed_chars='0123456789')
-        otp_code = api_code
-
-        # Save user data with the OTP code
-        user = serializer.save(otp_code=otp_code)
-        print(f"User {to_email} saved successfully with OTP code {otp_code}.")
-
-        # Send email to the user
-        subject = 'Your 4-digit API'
-        message = f'Your 4-digit API is: {api_code}'
-        from_email = 'muhammadobaidullah1122@gmail.com'  # Update with your email
-        try:
-            send_mail(subject, message, from_email, [to_email])
-            print(f"OTP email sent to {to_email}.")
-        except Exception as e:
-            # If sending email fails, return failure response
-            print(f"Failed to send OTP email to {to_email}. Error: {e}")
-            return Response({'success': False, 'message': 'Failed to send OTP email'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
-        # Get tokens for user
-        token = get_tokens_for_user(user)
-        print(f"Tokens generated for user {user.username}.")
-
-        # Response indicating success and message
-        return Response({
-            'success': True,
-            'message': 'User registered successfully. OTP sent to your email.',
-
-        }, status=status.HTTP_201_CREATED)
 class VerifyOTP(APIView):
     def post(self, request):
         code = request.data.get('code')
@@ -392,87 +349,7 @@ class VerifyOTP(APIView):
 
         # Modify response message
         return Response({'success': True, 'message': 'Verification successful'}, status=status.HTTP_200_OK)
-# class UserLoginView(APIView):
-#   renderer_classes = [UserRenderer]
-#   def post(self, request, format=None):
-#     serializer = UserLoginSerializer(data=request.data)
-#     serializer.is_valid(raise_exception=True)
-#     email = serializer.data.get('email')
-#     password = serializer.data.get('password')
-#     user = authenticate(email=email, password=password)
-#     if user is not None:
-#       token = get_tokens_for_user(user)
-#       return Response({'token':token, 'msg':'Login Success'}, status=status.HTTP_200_OK)
-#     else:
-#       return Response({'errors':{'non_field_errors':['Email or Password is not Valid']}}, status=status.HTTP_404_NOT_FOUND)
 
-
-# class UserLoginView(APIView):
-#     def post(self, request, format=None):
-#         serializer = UserLoginSerializer(data=request.data)
-#         serializer.is_valid(raise_exception=True)
-#         email = serializer.data.get('email')
-#         password = serializer.data.get('password')
-#         user = authenticate(email=email, password=password)
-#         if user is not None:
-#             refresh = RefreshToken.for_user(user)
-#             token = str(refresh.access_token)
-#             profile_serializer = UserProfileSerializer(user)
-#             return Response({'success': True, 'id': user.id, 'token': token, 'profile': profile_serializer.data}, status=status.HTTP_200_OK)
-#         else:
-#             return Response({'success': False, 'errors': {'non_field_errors': ['Email or Password is not Valid']}}, status=status.HTTP_404_NOT_FOUND)
-
-
-class UserLoginView(APIView):
-    def post(self, request, format=None):
-        serializer = UserLoginSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        email = serializer.validated_data.get('email')
-        password = serializer.validated_data.get('password')
-
-        # Check if user exists
-        try:
-            user = User.objects.get(email=email)
-        except User.DoesNotExist:
-            return Response({
-                'success': False,
-                'message': 'Email or Password is not valid.'
-            }, status=status.HTTP_200_OK)
-
-        # Check if user is verified
-        if not user.verify:
-            return Response({
-                'success': False,
-                'is_verified':user.verify,
-                'message': 'Account is not verified. Please verify your email.'
-            }, status=status.HTTP_200_OK)
-        if not user.is_active:
-            return Response({
-                'success': False,
-                'is_verified':user.verify,
-                'is_active':user.is_active,
-                'message': 'Account has been deactivated by Admin'
-            }, status=status.HTTP_200_OK)
-        # Authenticate user
-        user = authenticate(username=email, password=password)  # Use email as username for authentication
-
-        if user is not None:
-            refresh = RefreshToken.for_user(user)
-            token = str(refresh.access_token)
-            profile_serializer = UserProfileSerializer(user)  # Serialize User instance if needed
-            return Response({
-                'success': True,
-                'is_verified':user.verify,
-                'id': user.id,
-                'token': token,
-                'profile': profile_serializer.data if profile_serializer else None,  # Include profile data if needed
-                'message': 'Login successful.'
-            }, status=status.HTTP_200_OK)
-        else:
-            return Response({
-                'success': False,
-                'message': 'Email or Password is not valid.'
-            }, status=status.HTTP_200_OK)
 
 class UserProfileView(APIView):
     renderer_classes = [UserRenderer]
@@ -492,6 +369,10 @@ class UserProfileView(APIView):
                 "message": f"An error occurred: {str(e)}",
                 "data": {}
             }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+
 class UserChangePasswordView(APIView):
     def post(self, request, custom_id, format=None):
         try:

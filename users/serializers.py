@@ -48,13 +48,13 @@ class SocialRegistrationSerializer(serializers.ModelSerializer):
 class UserUpdateSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ['username','email','user_type', 'image','device_token','longitude','latitude','Trade_radius','address']
+        fields = ['username','email','user_type', 'image','device_token','longitude','latitude','Trade_radius','address','is_premium']
 class UserRegistrationSerializer(serializers.ModelSerializer):
     password = serializers.CharField(write_only=True, required=True, style={'input_type': 'password'})
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'password', 'user_type', 'image', 'device_token', 'full_name', 'address','longitude','latitude','contact' ]
+        fields = ['email', 'username', 'password', 'user_type', 'image', 'device_token', 'full_name', 'address','longitude','latitude','contact','device_id' ]
         extra_kwargs = {
             'user_type': {'default': 'client'},  # Set default value for user_type if not provided
             'image': {'required': False},  # Allow image to be optional
@@ -93,7 +93,7 @@ class UserLoginSerializer(serializers.ModelSerializer):
 class UserProfileSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
-        fields = ('id', 'email', 'username', 'user_type', 'is_active', 'is_admin', 'created_at', 'updated_at', 'image','is_registered','is_deleted','full_name', 'address','longitude','latitude')
+        fields = ('id', 'email', 'username', 'user_type', 'is_active', 'is_admin', 'created_at', 'updated_at', 'image','is_registered','is_deleted','full_name', 'address','longitude','latitude','is_premium','device_id')
 class UserChangePasswordSerializer(serializers.Serializer):
     old_password = serializers.CharField(max_length=255, style={'input_type': 'password'}, write_only=True)
     new_password = serializers.CharField(max_length=255, style={'input_type': 'password'}, write_only=True)

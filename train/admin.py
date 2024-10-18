@@ -1,29 +1,33 @@
 """Models registered on Django Admin site"""
 from django.contrib import admin
-from .models import  Exercise, Routine, Setgroup, Set, Session
+from .models import  Exercise,Category
 from django.utils.html import mark_safe
 
+class CategoryAdmin(admin.ModelAdmin):
+    list_display = ('name', 'description')  # Add the fields you want to display in the list view
 
+# Register the Category model with custom admin
+admin.site.register(Category, CategoryAdmin)
 
-class SetInline(admin.TabularInline):
-    model = Set
+# class SetInline(admin.TabularInline):
+#     model = Set
 
-class SetgroupAdmin(admin.ModelAdmin):
-    inlines = [
-        SetInline
-    ]
+# class SetgroupAdmin(admin.ModelAdmin):
+#     inlines = [
+#         SetInline
+#     ]
 
-class SetgroupInline(admin.TabularInline):
-    model = Setgroup
+# class SetgroupInline(admin.TabularInline):
+#     model = Setgroup
 
-class SessionAdmin(admin.ModelAdmin):
-    inlines = [
-        SetgroupInline,
-    ]
+# class SessionAdmin(admin.ModelAdmin):
+#     inlines = [
+#         SetgroupInline,
+#     ]
 
 # admin.site.register(User)
 class ExerciseAdmin(admin.ModelAdmin):
-    list_display = ('name', 'body_part', 'gif_preview')
+    list_display = ('id','name', 'body_part', 'gif_preview' ,'instructions' ,'category')
 
     def gif_preview(self, obj):
         """Display a preview of the video in the admin list."""
@@ -39,7 +43,5 @@ class ExerciseAdmin(admin.ModelAdmin):
     gif_preview.short_description = 'GIF/Video Preview'
 
 admin.site.register(Exercise, ExerciseAdmin)
-admin.site.register(Routine)
-admin.site.register(Setgroup, SetgroupAdmin)
-admin.site.register(Set)
-admin.site.register(Session, SessionAdmin)
+
+# admin.site.register(Session, SessionAdmin)
