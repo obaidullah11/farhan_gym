@@ -8,17 +8,16 @@ from django.utils.crypto import get_random_string
 from django.contrib.auth.base_user import BaseUserManager
 
 class MyUserManager(BaseUserManager):
-    def create_user(self, email, contact, username , password=None, **extra_fields):
+    def create_user(self, email,  username , password=None, **extra_fields):
         """
         Creates and saves a User with the given email, contact, name, and password.
         """
-        if not contact:
-            raise ValueError('The Contact field must be set')
+        
         if not email:
             raise ValueError('The Email field must be set')
 
         email = self.normalize_email(email)
-        user = self.model(email=email, contact=contact, username=username , **extra_fields)
+        user = self.model(email=email,  username=username , **extra_fields)
         user.set_password(password)
         user.save(using=self._db)
         return user

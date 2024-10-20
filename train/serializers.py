@@ -99,7 +99,7 @@ class ExerciseSerializernew(serializers.ModelSerializer):
 
     class Meta:
         model = Exercise
-        fields = ['id', 'name', 'body_part', 'instructions', 'gif', 'category_name', 'category']
+        fields = ['id', 'name', 'body_part', 'instructions', 'gif', 'category_name', 'category','exercise_image']
 
     def create(self, validated_data):
         category_name = validated_data.pop('category', None)  # Get category name, if provided
