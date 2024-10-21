@@ -373,6 +373,11 @@ class WorkoutHistoryByDeviceView(generics.ListAPIView):
             return Response({"status": False, "message": "No workout history found for this device."}, status=status.HTTP_404_NOT_FOUND)
 
 
+import calendar
+from datetime import timedelta
+from django.utils.timezone import now
+from django.db.models import Sum
+
 class ExerciseRecordsView(generics.GenericAPIView):
     serializer_class = WorkoutHistorySerializer
 
@@ -392,7 +397,9 @@ class ExerciseRecordsView(generics.GenericAPIView):
                     "max_weight": 0,
                     "max_volume": 0,
                     "record_history": []
-                }
+                },
+                "monthly_charts": [],  # To store monthly aggregated data
+                "weekly_charts": []  # To store weekly aggregated data
             }
         }
 
@@ -418,7 +425,7 @@ class ExerciseRecordsView(generics.GenericAPIView):
                     "actual_reps": set_performance.actual_reps,
                 })
 
-            # Append history data to response (only once per workout)
+            # Append history data to response
             response_data["data"]["history"].append(history_data)
 
             # Prepare records data
@@ -443,8 +450,57 @@ class ExerciseRecordsView(generics.GenericAPIView):
                     "predicted_weight": predicted_weight
                 })
 
+        # Add monthly and weekly chart data
+        self.add_monthly_chart_data(response_data, workout_histories)
+        self.add_weekly_chart_data(response_data, workout_histories)
+
         return Response(response_data)
 
     def predict_weight(self, set_performance):
         # Predict weight logic
         return set_performance.actual_kg * Decimal('1.1')  # Predicting a 10% increase
+
+    def add_monthly_chart_data(self, response_data, workout_histories):
+        # Aggregate monthly data for each exercise
+        months = {}
+        for workout_history in workout_histories:
+            # Get the month and year for the workout
+            month_year = workout_history.created_at.strftime('%Y-%m')
+            if month_year not in months:
+                months[month_year] = {
+                    "month": month_year,
+                    "total_weight": 0,
+                    "total_reps": 0
+                }
+
+            # Sum the total weight and reps for the month
+            set_performances = SetPerformance.objects.filter(session=workout_history.session)
+            for set_performance in set_performances:
+                months[month_year]["total_weight"] += set_performance.actual_kg
+                months[month_year]["total_reps"] += set_performance.actual_reps
+
+        # Append monthly data to the response
+        response_data["data"]["monthly_charts"] = list(months.values())
+
+    def add_weekly_chart_data(self, response_data, workout_histories):
+        # Aggregate weekly data for each exercise
+        weeks = {}
+        current_date = now().date()
+        for workout_history in workout_histories:
+            # Calculate the start of the week (Monday)
+            week_start = (workout_history.created_at - timedelta(days=workout_history.created_at.weekday())).date()
+            if week_start not in weeks:
+                weeks[week_start] = {
+                    "week_start": str(week_start),
+                    "total_weight": 0,
+                    "total_reps": 0
+                }
+
+            # Sum the total weight and reps for the week
+            set_performances = SetPerformance.objects.filter(session=workout_history.session)
+            for set_performance in set_performances:
+                weeks[week_start]["total_weight"] += set_performance.actual_kg
+                weeks[week_start]["total_reps"] += set_performance.actual_reps
+
+        # Append weekly data to the response
+        response_data["data"]["weekly_charts"] = list(weeks.values())
