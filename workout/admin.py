@@ -1,5 +1,14 @@
 from django.contrib import admin
-from .models import Workout, workoutExercise, Set, WorkoutSession, SetPerformance,Folder
+from .models import WorkoutHistory,SetHistory,Workout, workoutExercise, Set, WorkoutSession, SetPerformance,Folder
+@admin.register(WorkoutHistory)
+class WorkoutHistoryAdmin(admin.ModelAdmin):
+    list_display = ('device_id', 'workout', 'session', 'highest_weight', 'best_performance_set', 'created_at')
+    search_fields = ('device_id', 'workout__name')  # Allow searching by device ID and workout name
+
+@admin.register(SetHistory)
+class SetHistoryAdmin(admin.ModelAdmin):
+    list_display = ('workout_history', 'exercise', 'set_number', 'actual_kg', 'actual_reps', 'created_at')
+    search_fields = ('workout_history__device_id', 'exercise__name')  # Allow searching by device ID and exercise name
 @admin.register(Folder)
 class FolderAdmin(admin.ModelAdmin):
     list_display = ('id', 'name','device_id', 'created_at')  # Fields to display in the list view

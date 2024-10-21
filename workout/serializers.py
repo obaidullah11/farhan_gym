@@ -1,6 +1,10 @@
 from rest_framework import serializers
-from .models import Workout, workoutExercise, Set, WorkoutSession, SetPerformance,Folder
+from .models import Workout,SetHistory, workoutExercise, Set, WorkoutSession, SetPerformance,Folder,WorkoutHistory
 from train.models import Exercise
+from django.utils import timezone
+from datetime import timedelta
+from django.db.models import Sum
+
 from train.serializers import ExerciseSerializer
 class FolderSerializer(serializers.ModelSerializer):
     
@@ -26,7 +30,12 @@ class workoutExerciseSerializer(serializers.ModelSerializer):
         model = workoutExercise
         fields = ['exercise', 'order', 'sets']
 
-class WorkoutSerializer(serializers.ModelSerializer):
+
+
+
+
+
+class WorkoutSerializernew(serializers.ModelSerializer):
     perform_exercises = workoutExerciseSerializer(many=True)
     folder = serializers.CharField(write_only=True)  # Expect folder name from the request
 
@@ -59,6 +68,47 @@ class WorkoutSerializer(serializers.ModelSerializer):
 
         return workout
 
+    def update(self, instance, validated_data):
+        perform_exercises_data = validated_data.pop('perform_exercises', None)
+        folder_name = validated_data.pop('folder', None)  # Extract folder name if it is being updated
+
+        # Update basic workout information
+        instance.device_id = validated_data.get('device_id', instance.device_id)
+        instance.name = validated_data.get('name', instance.name)
+        
+        if folder_name:
+            # Get or create the folder by name if it is updated
+            folder, _ = Folder.objects.get_or_create(name=folder_name)
+            instance.folder = folder
+        
+        instance.save()
+
+        if perform_exercises_data:
+            # Update or create perform_exercises and related sets
+            for exercise_data in perform_exercises_data:
+                sets_data = exercise_data.pop('sets')
+                workout_exercise_id = exercise_data.get('id')
+
+                if workout_exercise_id:
+                    # Update existing workout exercise
+                    workout_exercise = workoutExercise.objects.get(id=workout_exercise_id, workout=instance)
+                    workout_exercise.name = exercise_data.get('name', workout_exercise.name)
+                    workout_exercise.save()
+
+                    # Update the sets for the workout exercise
+                    Set.objects.filter(workoutExercise=workout_exercise).delete()  # Delete old sets
+                    Set.objects.bulk_create(
+                        [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+                    )
+                else:
+                    # Create a new workout exercise and its sets
+                    workout_exercise = workoutExercise.objects.create(workout=instance, **exercise_data)
+                    Set.objects.bulk_create(
+                        [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+                    )
+
+        return instance
+
     def to_representation(self, instance):
         representation = super().to_representation(instance)
         representation['device_id'] = instance.device_id  # Show the device_id instead of user ID
@@ -79,6 +129,243 @@ class WorkoutSerializer(serializers.ModelSerializer):
                 exercise['exercise'] = 'Unknown Exercise'
 
         return representation
+
+
+
+class WorkoutSerializer(serializers.ModelSerializer):
+    perform_exercises = workoutExerciseSerializer(many=True)
+    folder = serializers.CharField(write_only=True)  # Expect folder name from the request
+
+    class Meta:
+        model = Workout
+        fields = ['device_id', 'name', 'folder', 'notes', 'perform_exercises']
+
+    def create(self, validated_data):
+        perform_exercises_data = validated_data.pop('perform_exercises', [])
+        folder_name = validated_data.pop('folder', None)
+
+        # Debugging prints
+        print(f"Creating Workout with validated_data: {validated_data}")
+        print(f"Folder name received: {folder_name}")
+        print(f"Perform exercises data: {perform_exercises_data}")
+
+        # Create or get the folder instance
+        folder, _ = Folder.objects.get_or_create(name=folder_name)
+        print(f"Folder created or retrieved: {folder.name}")
+
+        # Create the Workout instance
+        workout = Workout.objects.create(folder=folder, **validated_data)
+        print(f"Workout created: {workout.name} (ID: {workout.id})")
+
+        # Create a new WorkoutSession associated with this workout
+        workout_session = WorkoutSession.objects.create(workout=workout, device_id=validated_data['device_id'])
+        print(f"WorkoutSession created: {workout_session.id} for Workout ID: {workout.id}")
+
+        # Create workout exercises and their sets
+        for exercise_data in perform_exercises_data:
+            sets_data = exercise_data.pop('sets', [])
+            workout_exercise = workoutExercise.objects.create(workout=workout, **exercise_data)
+            print(f"WorkoutExercise created: {workout_exercise.id} for workout {workout.name}")
+
+            # Create sets for each workout exercise
+            created_sets = Set.objects.bulk_create(
+                [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+            )
+            print(f"Created sets: {[set.id for set in created_sets]} for workout exercise {workout_exercise.id}")
+
+        return workout
+
+    def update(self, instance, validated_data):
+        perform_exercises_data = validated_data.pop('perform_exercises', None)
+        folder_name = validated_data.pop('folder', None)
+
+        # Debugging prints
+        print(f"Updating Workout ID: {instance.id} with validated_data: {validated_data}")
+        print(f"Folder name received for update: {folder_name}")
+
+        # Update workout details
+        for attr, value in validated_data.items():
+            setattr(instance, attr, value)
+        instance.save()
+        print(f"Updated Workout: {instance.name}")
+
+        # Update folder if provided
+        if folder_name:
+            folder, _ = Folder.objects.get_or_create(name=folder_name)
+            instance.folder = folder
+            instance.save()
+            print(f"Folder updated to: {folder.name}")
+
+        if perform_exercises_data:
+            # Delete existing workout exercises and sets
+            workoutExercise.objects.filter(workout=instance).delete()
+            print(f"Deleted existing workout exercises for Workout ID: {instance.id}")
+
+            # Recreate workout exercises and their sets
+            for exercise_data in perform_exercises_data:
+                sets_data = exercise_data.pop('sets')
+                workout_exercise = workoutExercise.objects.create(workout=instance, **exercise_data)
+                print(f"WorkoutExercise created: {workout_exercise.id} for updated workout {instance.name}")
+
+                # Create sets for each workout exercise
+                created_sets = Set.objects.bulk_create(
+                    [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+                )
+                print(f"Created sets: {[set.id for set in created_sets]} for updated workout exercise {workout_exercise.id}")
+
+        # Check if a new session needs to be created
+        workout_session = WorkoutSession.objects.create(workout=instance, device_id=instance.device_id)
+        print(f"New WorkoutSession created: {workout_session.id} for updated Workout ID: {instance.id}")
+
+        return instance
+
+    def to_representation(self, instance):
+        representation = super().to_representation(instance)
+        representation['device_id'] = instance.device_id  # Show the device_id instead of user ID
+
+        # Retrieve the associated folder
+        representation['folder'] = instance.folder.name
+
+        # Retrieve the associated WorkoutSession
+        workout_session = WorkoutSession.objects.filter(workout=instance).first()
+        representation['session_id'] = workout_session.id if workout_session else None
+
+        # Include workout name and date/time of session
+        representation['workout_name'] = instance.name
+        
+
+        # Calculate total weight from performances
+        
+        
+
+        # Add exercise details to the representation
+        exercise_details = []
+        for exercise in representation['perform_exercises']:
+            exercise_id = exercise['exercise']
+            try:
+                exercise_obj = Exercise.objects.get(id=exercise_id)
+                exercise['exercise'] = exercise_obj.name
+                exercise_details.append({
+                    'exercise_name': exercise_obj.name,
+                    'sets': exercise.get('sets', []),
+                })
+            except Exercise.DoesNotExist:
+                exercise['exercise'] = 'Unknown Exercise'
+
+        representation['exercise_details'] = exercise_details
+
+        return representation
+
+# class WorkoutSerializer(serializers.ModelSerializer):
+#     perform_exercises = workoutExerciseSerializer(many=True)
+#     folder = serializers.CharField(write_only=True)  # Expect folder name from the request
+
+#     class Meta:
+#         model = Workout
+#         fields = ['device_id', 'name', 'folder', 'notes', 'perform_exercises']
+
+#     def create(self, validated_data):
+#         perform_exercises_data = validated_data.pop('perform_exercises', [])
+#         folder_name = validated_data.pop('folder', None)
+
+#         # Debugging prints
+#         print(f"Creating Workout with validated_data: {validated_data}")
+#         print(f"Folder name received: {folder_name}")
+#         print(f"Perform exercises data: {perform_exercises_data}")
+
+#         # Create or get the folder instance
+#         folder, _ = Folder.objects.get_or_create(name=folder_name)
+#         print(f"Folder created or retrieved: {folder.name}")
+
+#         # Create the Workout instance
+#         workout = Workout.objects.create(folder=folder, **validated_data)
+#         print(f"Workout created: {workout.name} (ID: {workout.id})")
+
+#         # Create a new WorkoutSession associated with this workout
+#         workout_session = WorkoutSession.objects.create(workout=workout, device_id=validated_data['device_id'])
+#         print(f"WorkoutSession created: {workout_session.id} for Workout ID: {workout.id}")
+
+#         # Create workout exercises and their sets
+#         for exercise_data in perform_exercises_data:
+#             sets_data = exercise_data.pop('sets', [])
+#             workout_exercise = workoutExercise.objects.create(workout=workout, **exercise_data)
+#             print(f"WorkoutExercise created: {workout_exercise.id} for workout {workout.name}")
+
+#             # Create sets for each workout exercise
+#             created_sets = Set.objects.bulk_create(
+#                 [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+#             )
+#             print(f"Created sets: {[set.id for set in created_sets]} for workout exercise {workout_exercise.id}")
+
+#         return workout
+
+#     def update(self, instance, validated_data):
+#         perform_exercises_data = validated_data.pop('perform_exercises', None)
+#         folder_name = validated_data.pop('folder', None)
+
+#         # Debugging prints
+#         print(f"Updating Workout ID: {instance.id} with validated_data: {validated_data}")
+#         print(f"Folder name received for update: {folder_name}")
+
+#         # Update workout details
+#         for attr, value in validated_data.items():
+#             setattr(instance, attr, value)
+#         instance.save()
+#         print(f"Updated Workout: {instance.name}")
+
+#         # Update folder if provided
+#         if folder_name:
+#             folder, _ = Folder.objects.get_or_create(name=folder_name)
+#             instance.folder = folder
+#             instance.save()
+#             print(f"Folder updated to: {folder.name}")
+
+#         if perform_exercises_data:
+#             # Delete existing workout exercises and sets
+#             workoutExercise.objects.filter(workout=instance).delete()
+#             print(f"Deleted existing workout exercises for Workout ID: {instance.id}")
+
+#             # Recreate workout exercises and their sets
+#             for exercise_data in perform_exercises_data:
+#                 sets_data = exercise_data.pop('sets')
+#                 workout_exercise = workoutExercise.objects.create(workout=instance, **exercise_data)
+#                 print(f"WorkoutExercise created: {workout_exercise.id} for updated workout {instance.name}")
+
+#                 # Create sets for each workout exercise
+#                 created_sets = Set.objects.bulk_create(
+#                     [Set(workoutExercise=workout_exercise, **set_data) for set_data in sets_data]
+#                 )
+#                 print(f"Created sets: {[set.id for set in created_sets]} for updated workout exercise {workout_exercise.id}")
+
+#         # Check if a new session needs to be created
+#         # This can be adjusted based on your logic (e.g., creating a session only if the workout is completed)
+#         workout_session = WorkoutSession.objects.create(workout=instance, device_id=instance.device_id)
+#         print(f"New WorkoutSession created: {workout_session.id} for updated Workout ID: {instance.id}")
+
+#         return instance
+
+#     def to_representation(self, instance):
+#         representation = super().to_representation(instance)
+#         representation['device_id'] = instance.device_id  # Show the device_id instead of user ID
+
+#         # Retrieve the associated folder
+#         representation['folder'] = instance.folder.name
+
+#         # Retrieve the associated WorkoutSession
+#         workout_session = WorkoutSession.objects.filter(workout=instance).first()
+#         representation['session_id'] = workout_session.id if workout_session else None
+
+#         for exercise in representation['perform_exercises']:
+#             exercise_id = exercise['exercise']
+#             try:
+#                 exercise_obj = Exercise.objects.get(id=exercise_id)
+#                 exercise['exercise'] = exercise_obj.name
+#             except Exercise.DoesNotExist:
+#                 exercise['exercise'] = 'Unknown Exercise'
+
+#         return representation
+
+
 
 class SetPerformanceSerializer(serializers.ModelSerializer):
     set = serializers.PrimaryKeyRelatedField(queryset=Set.objects.all())
@@ -132,3 +419,60 @@ class FolderSerializernew(serializers.ModelSerializer):
     class Meta:
         model = Folder
         fields = ['id', 'name', 'created_at', 'device_id', 'workouts']  # Include workouts in the fields
+
+
+class WorkoutHistorySerializer(serializers.ModelSerializer):
+    set_history_data = serializers.SerializerMethodField()  # Changed field name
+    workout_name = serializers.CharField(source='workout.name', read_only=True)
+    maxweight = serializers.SerializerMethodField()
+    PRs = serializers.SerializerMethodField()
+    workout_time = serializers.SerializerMethodField()
+
+    class Meta:
+        model = WorkoutHistory
+        fields = ['device_id', 'workout_name', 'highest_weight', 'set_history_data', 'created_at', 'maxweight', 'PRs', 'workout_time']
+
+    def get_set_history_data(self, obj):
+        # Assuming you have a SetHistory model linked to WorkoutHistory
+        set_histories = SetHistory.objects.filter(workout_history=obj)
+        return [{
+            'exercise_name': set_history.exercise.name,
+            'set_number': set_history.set_number,
+            'actual_kg': set_history.actual_kg,
+            'actual_reps': set_history.actual_reps
+        } for set_history in set_histories]
+
+    def get_maxweight(self, obj):
+        total_weight = SetPerformance.objects.filter(session=obj.session).aggregate(
+            total_kg=Sum('actual_kg')
+        )['total_kg'] or 0
+        return total_weight
+
+    def get_PRs(self, obj):
+        set_performances = SetPerformance.objects.filter(session=obj.session)
+        prs = []
+        for performance in set_performances:
+            exercise = performance.set.workoutExercise.exercise
+            current_kg = performance.actual_kg
+            current_reps = performance.actual_reps
+            
+            # Initialize rating logic (you can replace this with your actual logic)
+            rating = 10  # Assuming a constant rating for illustration, adjust accordingly
+
+            prs.append({
+                'exercise': exercise.name,
+                'current_kg': current_kg,
+                'current_reps': current_reps,
+                'rating': max(0, min(10, rating))  # Ensure rating is between 0 and 10
+            })
+
+        return prs
+
+    def get_workout_time(self, obj):
+        workout_duration = obj.workout_time
+        if workout_duration is None:
+            return "0h 0m 0s"  # Default if no workout time
+
+        hours, remainder = divmod(workout_duration.total_seconds(), 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{int(hours)}h {int(minutes)}m {int(seconds)}s"

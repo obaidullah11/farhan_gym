@@ -8,7 +8,9 @@ urlpatterns = [
     path('getallcategory/', get_all_categories, name='get_all_categories'),
     path('exercises/', exercise_list_create, name='exercise-list-create'),
     path('exercises/<int:pk>/', exercise_detail, name='exercise-detail'),
-
+    path('api/body-parts/', BodyPartListView.as_view(), name='body-part-list'),
+    path('api/exercises/', FilteredExerciseListView.as_view(), name='filtered-exercise-list'),
+    path('api/exercise/update/<int:pk>/', ExerciseUpdateView.as_view(), name='exercise-update'),
     # # Routine URLs
     # path('routines/', routine_list_create, name='routine-list-create'),
     # path('routines/<int:pk>/', routine_detail, name='routine-detail'),

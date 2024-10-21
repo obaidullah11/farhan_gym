@@ -4,10 +4,87 @@ from rest_framework import status
 from .models import *
 from django.shortcuts import get_object_or_404
 from .serializers import *
+from rest_framework import generics
+class ExerciseUpdateView(generics.UpdateAPIView):
+    queryset = Exercise.objects.all()
+    serializer_class = ExerciseUpdateSerializer
+
+    def patch(self, request, *args, **kwargs):
+        exercise_id = kwargs.get('pk')
+        try:
+            exercise = Exercise.objects.get(id=exercise_id)
+        except Exercise.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": "Exercise not found."
+            }, status=status.HTTP_404_NOT_FOUND)
+
+        # Partially update the exercise
+        serializer = ExerciseUpdateSerializer(exercise, data=request.data, partial=True)
+        if serializer.is_valid():
+            serializer.save()
+            return Response({
+                "success": True,
+                "message": "Exercise updated successfully.",
+                "data": serializer.data
+            })
+        return Response({
+            "success": False,
+            "message": "Failed to update exercise.",
+            "errors": serializer.errors
+        }, status=status.HTTP_400_BAD_REQUEST)
 
 
 
 
+class FilteredExerciseListView(generics.ListAPIView):
+    serializer_class = ExerciseSerializernew
+
+    def get(self, request, *args, **kwargs):
+        category_name = request.query_params.get('category')
+        body_part = request.query_params.get('body_part')
+
+        # Validate the input parameters
+        if not category_name or not body_part:
+            return Response({
+                "success": False,
+                "message": "Please provide both 'category' and 'body_part' parameters.",
+                "data": []
+            }, status=400)
+
+        try:
+            # Get the category object based on the name
+            category = Category.objects.get(name=category_name)
+            
+            # Filter exercises based on category and body part
+            exercises = Exercise.objects.filter(category=category, body_part=body_part)
+
+            if not exercises.exists():
+                return Response({
+                    "success": True,
+                    "message": "No exercises found for the given filters.",
+                    "data": []
+                })
+
+            # Serialize the exercise data
+            serializer = ExerciseSerializernew(exercises, many=True)
+            return Response({
+                "success": True,
+                "message": "Exercises retrieved successfully",
+                "data": serializer.data
+            })
+        except Category.DoesNotExist:
+            return Response({
+                "success": False,
+                "message": f"Category '{category_name}' does not exist.",
+                "data": []
+            }, status=404)
+        except Exception as e:
+            return Response({
+                "success": False,
+                "message": f"An error occurred: {str(e)}",
+                "data": []
+            }, status=500)
 
 @api_view(['GET'])
 def get_all_categories(request):
@@ -379,3 +456,22 @@ def exercise_detail(request, pk):
 #         }, status=status.HTTP_204_NO_CONTENT)
 
 
+class BodyPartListView(generics.ListAPIView):
+    queryset = Exercise.objects.all()
+    serializer_class = BodyPartSerializer
+
+    def get(self, request, *args, **kwargs):
+        try:
+            # Get distinct body parts
+            body_parts = Exercise.objects.values_list('body_part', flat=True).distinct()
+            return Response({
+                "success": True,
+                "message": "Body parts retrieved successfully",
+                "data": list(body_parts)
+            })
+        except Exception as e:
+            return Response({
+                "success": False,
+                "message": f"An error occurred: {str(e)}",
+                "data": []
+            }, status=500)

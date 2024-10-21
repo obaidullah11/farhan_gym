@@ -20,8 +20,8 @@ class Exercise(models.Model):
     """Exercise such as plank, squat, row"""
    
     name = models.CharField(max_length=40, unique=True)
-    body_part = models.CharField(max_length=2,)
-    instructions = models.CharField(max_length=40, blank=True)
+    body_part = models.CharField(max_length=225,)
+    instructions = models.CharField(max_length=800, blank=True)
     gif = models.FileField(upload_to='exercise_videos/', null=True, blank=True)
     exercise_image = models.FileField(upload_to='exercise_images/', null=True, blank=True)  # New field for image
     category = models.ForeignKey(Category, on_delete=models.CASCADE, related_name='exercises', null=True, blank=True)

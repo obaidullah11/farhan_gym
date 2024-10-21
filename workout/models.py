@@ -16,6 +16,7 @@ class Workout(models.Model):
     device_id = models.CharField(max_length=255,null=True,blank=True)  # Use device_id instead of User
     name = models.CharField(max_length=255)  # Workout name (e.g., 'Leg Day', 'Push Day')
     created_at = models.DateTimeField(auto_now_add=True)
+    notes = models.CharField(max_length=1000,null=True,blank=True)
     folder = models.ForeignKey(Folder, on_delete=models.CASCADE, related_name='workouts')  # Link to Folder model
     def __str__(self):
         return f'{self.name} - {self.device_id}'
@@ -49,6 +50,8 @@ class WorkoutSession(models.Model):
     device_id = models.CharField(max_length=255,null=True,blank=True)  # Use device_id instead of User
     workout = models.ForeignKey(Workout, on_delete=models.CASCADE, related_name="workout_sessions")
     date = models.DateTimeField(auto_now_add=True)
+     
+    created_at = models.DateTimeField(auto_now_add=True) 
 
     def __str__(self):
         return f'{self.device_id} - {self.workout.name} on {self.date}'
@@ -58,7 +61,8 @@ class SetPerformance(models.Model):
     session = models.ForeignKey(WorkoutSession, on_delete=models.CASCADE, related_name="set_performances")
     set = models.ForeignKey(Set, on_delete=models.CASCADE)
     actual_kg = models.DecimalField(max_digits=5, decimal_places=2)  # Actual weight lifted
-    actual_reps = models.PositiveIntegerField()  # Actual reps performed
+    actual_reps = models.PositiveIntegerField()
+    created_at = models.DateTimeField(auto_now_add=True)  # Actual reps performed
 
     def __str__(self):
         return f'{self.session.workout.name} - Set {self.set.set_number}: {self.actual_kg}kg x {self.actual_reps} reps'
@@ -71,3 +75,28 @@ class SetPerformance(models.Model):
             raise ValidationError("Reps must be a positive value.")
         if self.actual_kg > self.set.kg:
             raise ValidationError("Actual weight cannot exceed the set weight.")
+        
+# models.py
+
+
+class WorkoutHistory(models.Model):
+    device_id = models.CharField(max_length=255)
+    workout = models.ForeignKey(Workout, on_delete=models.CASCADE)
+    session = models.ForeignKey(WorkoutSession, on_delete=models.CASCADE)
+    highest_weight = models.DecimalField(max_digits=5, decimal_places=2)  # Track the highest weight lifted
+    best_performance_set = models.ForeignKey(SetPerformance, on_delete=models.CASCADE)  # Reference to best performance set
+    created_at = models.DateTimeField(auto_now_add=True)  # Automatically set the timestamp when created
+    workout_time = models.DurationField(null=True, blank=True)
+    def __str__(self):
+        return f"Workout History for {self.workout.name} - {self.device_id} on {self.created_at}"
+
+class SetHistory(models.Model):
+    workout_history = models.ForeignKey(WorkoutHistory, on_delete=models.CASCADE, related_name='set_histories')
+    exercise = models.ForeignKey(Exercise, on_delete=models.CASCADE)  # Link to the exercise
+    set_number = models.PositiveIntegerField()  # The set number
+    actual_kg = models.DecimalField(max_digits=5, decimal_places=2)  # Actual weight lifted
+    actual_reps = models.PositiveIntegerField()  # Actual reps performed
+    created_at = models.DateTimeField(auto_now_add=True)  # Automatically set the timestamp when created
+
+    def __str__(self):
+        return f"Set History: {self.exercise.name} - Set {self.set_number} on {self.created_at}"
