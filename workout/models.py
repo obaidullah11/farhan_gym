@@ -97,6 +97,7 @@ class SetHistory(models.Model):
     actual_kg = models.DecimalField(max_digits=5, decimal_places=2)  # Actual weight lifted
     actual_reps = models.PositiveIntegerField()  # Actual reps performed
     created_at = models.DateTimeField(auto_now_add=True)  # Automatically set the timestamp when created
-
+    rm = models.FloatField(null=True, blank=True)
+    pr = models.IntegerField(default=0) 
     def __str__(self):
         return f"Set History: {self.exercise.name} - Set {self.set_number} on {self.created_at}"

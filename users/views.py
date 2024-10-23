@@ -327,18 +327,41 @@ class UserUpdateAPIView(APIView):
 
 
 
+# class VerifyOTP(APIView):
+#     def post(self, request):
+#         code = request.data.get('code')
+
+#         if not code:
+#             return Response({'success': False,'error': 'Verification code is required'}, status=status.HTTP_400_BAD_REQUEST)
+
+#         try:
+#             # Retrieve the user based on the provided OTP code
+#             user = User.objects.get(otp_code=code)
+#         except User.DoesNotExist:
+#             return Response({'success': False,'error': 'Please enter correct otp code. Thank you'}, status=status.HTTP_404_NOT_FOUND)
+
+#         # Now you have the user based on the OTP code
+#         # Proceed with your verification process
+
+#         # For example, you can update the 'verify' field to True
+#         user.verify = True
+#         user.save()
+
+#         # Modify response message
+#         return Response({'success': True, 'message': 'Verification successful'}, status=status.HTTP_200_OK)
+
 class VerifyOTP(APIView):
     def post(self, request):
         code = request.data.get('code')
 
         if not code:
-            return Response({'success': False,'error': 'Verification code is required'}, status=status.HTTP_400_BAD_REQUEST)
+            return Response({'success': False, 'error': 'Verification code is required'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             # Retrieve the user based on the provided OTP code
             user = User.objects.get(otp_code=code)
         except User.DoesNotExist:
-            return Response({'success': False,'error': 'Please enter correct otp code. Thank you'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'success': False, 'error': 'Please enter correct OTP code. Thank you'}, status=status.HTTP_404_NOT_FOUND)
 
         # Now you have the user based on the OTP code
         # Proceed with your verification process
@@ -347,10 +370,17 @@ class VerifyOTP(APIView):
         user.verify = True
         user.save()
 
+        # Generate JWT token
+        refresh = RefreshToken.for_user(user)
+        access_token = str(refresh.access_token)
+
         # Modify response message
-        return Response({'success': True, 'message': 'Verification successful'}, status=status.HTTP_200_OK)
-
-
+        return Response({
+            'success': True,
+            'message': 'Verification successful',
+            'access': access_token,
+            'refresh': str(refresh)
+        }, status=status.HTTP_200_OK)
 class UserProfileView(APIView):
     renderer_classes = [UserRenderer]
     permission_classes = [IsAuthenticated]

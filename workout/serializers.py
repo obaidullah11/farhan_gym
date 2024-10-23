@@ -4,7 +4,8 @@ from train.models import Exercise
 from django.utils import timezone
 from datetime import timedelta
 from django.db.models import Sum
-
+from django.db.models import Max
+from django.db import models
 from train.serializers import ExerciseSerializer
 class FolderSerializer(serializers.ModelSerializer):
     
@@ -422,10 +423,10 @@ class FolderSerializernew(serializers.ModelSerializer):
 
 
 class WorkoutHistorySerializer(serializers.ModelSerializer):
-    set_history_data = serializers.SerializerMethodField()  # Changed field name
+    set_history_data = serializers.SerializerMethodField()
     workout_name = serializers.CharField(source='workout.name', read_only=True)
     maxweight = serializers.SerializerMethodField()
-    PRs = serializers.SerializerMethodField()
+    PRs = serializers.SerializerMethodField()  # For progress overload
     workout_time = serializers.SerializerMethodField()
 
     class Meta:
@@ -433,13 +434,14 @@ class WorkoutHistorySerializer(serializers.ModelSerializer):
         fields = ['device_id', 'workout_name', 'highest_weight', 'set_history_data', 'created_at', 'maxweight', 'PRs', 'workout_time']
 
     def get_set_history_data(self, obj):
-        # Assuming you have a SetHistory model linked to WorkoutHistory
         set_histories = SetHistory.objects.filter(workout_history=obj)
         return [{
             'exercise_name': set_history.exercise.name,
             'set_number': set_history.set_number,
             'actual_kg': set_history.actual_kg,
-            'actual_reps': set_history.actual_reps
+            'actual_reps': set_history.actual_reps,
+            'rm': set_history.rm,  # Include RM value
+             # Include PR flag (1 or 0)
         } for set_history in set_histories]
 
     def get_maxweight(self, obj):
@@ -449,24 +451,35 @@ class WorkoutHistorySerializer(serializers.ModelSerializer):
         return total_weight
 
     def get_PRs(self, obj):
-        set_performances = SetPerformance.objects.filter(session=obj.session)
-        prs = []
-        for performance in set_performances:
-            exercise = performance.set.workoutExercise.exercise
-            current_kg = performance.actual_kg
-            current_reps = performance.actual_reps
+    # Initialize weight_difference to 0
+        weight_difference = 0
+        
+        # Fetch the set history records associated with the workout history
+        set_histories = SetHistory.objects.filter(workout_history=obj)
+
+        # Iterate through each set history
+        for set_history in set_histories:
+            # Access the related exercise directly
+            exercise = set_history.exercise  
+            current_kg = set_history.actual_kg
             
-            # Initialize rating logic (you can replace this with your actual logic)
-            rating = 10  # Assuming a constant rating for illustration, adjust accordingly
+            # Fetch previous performances for the same exercise, excluding the current session
+            previous_performances = SetHistory.objects.filter(
+                exercise=exercise,
+                workout_history__session=obj.session  # Ensure this references the correct session
+            ).exclude(workout_history=obj)
 
-            prs.append({
-                'exercise': exercise.name,
-                'current_kg': current_kg,
-                'current_reps': current_reps,
-                'rating': max(0, min(10, rating))  # Ensure rating is between 0 and 10
-            })
+            # Get the maximum previous weight lifted for the same exercise
+            previous_max_weight = previous_performances.aggregate(max_weight=models.Max('actual_kg'))['max_weight'] or 0
+            
+            # Calculate weight difference if there's progress overload
+            weight_difference = current_kg - previous_max_weight if current_kg > previous_max_weight else 0
 
-        return prs
+        # Return only the weight difference as an integer
+        return weight_difference
+
+
+
 
     def get_workout_time(self, obj):
         workout_duration = obj.workout_time

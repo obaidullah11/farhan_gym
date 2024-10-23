@@ -7,6 +7,8 @@ from rest_framework.decorators import api_view
 from .models import Workout, WorkoutSession, SetPerformance, Workout, workoutExercise, Set, SetPerformance,Folder,WorkoutHistory,SetHistory
 from .serializers import WorkoutHistorySerializer,WorkoutSerializernew,FolderSerializernew,FolderSerializer, WorkoutSerializer, UpdateProgressSerializer, SetPerformanceSerializerNew
 from datetime import timedelta
+from django.db import models
+
 
 class FolderByDeviceIDView(generics.ListAPIView):
     def get(self, request, device_id, *args, **kwargs):
@@ -191,66 +193,71 @@ def get_user_workouts(request, device_id):
         "message": "User workouts retrieved successfully.",
         "data": serialized_workouts
     }, status=status.HTTP_200_OK)
-
 class UpdateWorkoutProgressView(generics.CreateAPIView):
-    serializer_class = UpdateProgressSerializer  # Specify the serializer class
+    serializer_class = UpdateProgressSerializer
 
     def post(self, request, device_id, *args, **kwargs):
-        # Initialize the serializer with the data
         serializer = self.get_serializer(data=request.data)
 
-        # Validate the serializer data
         if not serializer.is_valid():
+            print(serializer.errors)  # Debugging line
             return Response({"status": False, "message": "Invalid data.", "data": serializer.errors}, status=status.HTTP_400_BAD_REQUEST)
-        
+
         session_id = serializer.validated_data['session_id']
         performances = serializer.validated_data['performances']
-        workout_time_str = request.data.get('workout_time')  # Get the workout time from the request
+        workout_time_str = request.data.get('workout_time')
 
-        # Convert workout_time string to timedelta
         workout_time = self.parse_workout_time(workout_time_str)
 
-        # Try to get the workout session
         workout_session = WorkoutSession.objects.filter(id=session_id, device_id=device_id).first()
         if not workout_session:
             return Response({"status": False, "message": "Workout session not found."}, status=status.HTTP_404_NOT_FOUND)
 
         highest_weight = 0
         best_performance_set = None
+        max_rm = 0
+        new_pr_flag = False
 
-        # Iterate over performances and update SetPerformance records
         for performance in performances:
             set_id = performance['set']
             actual_kg = performance['actual_kg']
             actual_reps = performance['actual_reps']
 
-            # Update or create the SetPerformance record
             set_performance, created = SetPerformance.objects.update_or_create(
                 session=workout_session,
                 set_id=set_id,
                 defaults={'actual_kg': actual_kg, 'actual_reps': actual_reps}
             )
 
-            # Track the highest weight lifted
             if actual_kg > highest_weight:
                 highest_weight = actual_kg
                 best_performance_set = set_performance
 
-        # Ensure the workout session exists before creating workout history
+            rm = actual_kg * (1 + actual_reps / 30)
+
+            if rm > max_rm:
+                max_rm = rm
+
+            previous_set_performances = SetPerformance.objects.filter(
+                set_id=set_id, session__device_id=device_id
+            ).exclude(session=workout_session)
+            previous_max_weight = previous_set_performances.aggregate(max_weight=models.Max('actual_kg'))['max_weight'] or 0
+
+            if actual_kg > previous_max_weight:
+                new_pr_flag = True
+
         if not best_performance_set:
             return Response({"status": False, "message": "No valid performances found."}, status=status.HTTP_400_BAD_REQUEST)
 
-        # Create a workout history record
         workout_history = WorkoutHistory.objects.create(
             device_id=device_id,
             workout=workout_session.workout,
             session=workout_session,
             highest_weight=highest_weight,
             best_performance_set=best_performance_set,
-            workout_time=workout_time  # Store the workout time
+            workout_time=workout_time
         )
 
-        # Now create SetHistory records
         set_history_data = []
         for performance in performances:
             set_id = performance['set']
@@ -258,42 +265,53 @@ class UpdateWorkoutProgressView(generics.CreateAPIView):
             actual_reps = performance['actual_reps']
 
             workout_set = Set.objects.get(id=set_id)
+            rm = actual_kg * (1 + actual_reps / 30)
+
+            previous_set_performances = SetPerformance.objects.filter(
+                set_id=set_id, session__device_id=device_id
+            ).exclude(session=workout_session)
+            previous_max_weight = previous_set_performances.aggregate(max_weight=models.Max('actual_kg'))['max_weight'] or 0
+            pr = 1 if actual_kg > previous_max_weight else 0
 
             set_history = SetHistory.objects.create(
-                workout_history=workout_history,  # Link to the created workout history
+                workout_history=workout_history,
                 exercise=workout_set.workoutExercise.exercise,
                 set_number=workout_set.set_number,
                 actual_kg=actual_kg,
-                actual_reps=actual_reps
+                actual_reps=actual_reps,
+                rm=rm,
+                pr=pr
             )
-            # Collect the data for response
+
             set_history_data.append({
                 "exercise": workout_set.workoutExercise.exercise.name,
                 "set_number": workout_set.set_number,
                 "actual_kg": actual_kg,
-                "actual_reps": actual_reps
+                "actual_reps": actual_reps,
+                "rm": round(rm, 2),
+                "pr": pr
             })
 
-        # Prepare response data
         response_data = {
             "status": True,
             "message": "Progress updated successfully.",
             "workout_name": workout_session.workout.name,
-            "date_time": workout_history.created_at.isoformat(),  # Get created_at from WorkoutHistory
-            "total_weight": highest_weight,  # Use the highest weight tracked
-            "workout_time": str(workout_time),  # Include the workout time in response
+            "date_time": workout_history.created_at.isoformat(),
+            "total_weight": highest_weight,
+            "max_rm": round(max_rm, 2),
+            "new_pr": new_pr_flag,
+            "workout_time": str(workout_time),
             "exercise_details": set_history_data
         }
 
-        # Return a success response with workout history data
         return Response(response_data, status=status.HTTP_201_CREATED)
 
-    def parse_workout_time(self, time_str):
-        """Convert a time string in the format HH:MM:SS to a timedelta."""
-        if time_str:
-            hours, minutes, seconds = map(int, time_str.split(':'))
-            return timedelta(hours=hours, minutes=minutes, seconds=seconds)
-        return timedelta() 
+    def parse_workout_time(self, workout_time_str):
+        try:
+            h, m, s = map(int, workout_time_str.split(':'))
+            return timedelta(hours=h, minutes=m, seconds=s)
+        except ValueError:
+            return timedelta(0)
 
 class GetSetPerformanceByUserView(generics.ListAPIView):
     serializer_class = SetPerformanceSerializerNew
